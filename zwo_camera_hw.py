@@ -1,4 +1,6 @@
 from ScopeFoundry import HardwareComponent
+from qtpy import QtCore
+import os
 
 class ZWOCameraHW(HardwareComponent):
     
@@ -10,6 +12,8 @@ class ZWOCameraHW(HardwareComponent):
         S.New('cam_id', dtype=int, initial=0)
         S.New('name', dtype=str, ro=True)
         S.New('img_type', dtype=str, choices=self.img_types.keys())
+        S.New('live_update', dtype=bool, initial=True)
+        S.New('live_update_period', dtype=int, unit='ms', initial=100)
         
         for c in self.possible_controls.values():
             S.New(c['Name'],
@@ -22,12 +26,26 @@ class ZWOCameraHW(HardwareComponent):
             if c['IsAutoSupported']:
                 S.New(c['Name']+"_auto", dtype=bool)
         
+        self.live_update_timer = QtCore.QTimer(self)
+        self.live_update_timer.timeout.connect(self.on_live_update_timer)        
+        self.live_update_timer.start(100)
+        S.live_update_period.add_listener(self.on_new_live_update_period)
+
+    def on_new_live_update_period(self):
+        #print("asdf")
+        self.live_update_timer.setInterval(
+            self.settings['live_update_period'])
+        
+    def on_live_update_timer(self):
+        S = self.settings
+        if S['connected'] and S['live_update']:
+            self.read_from_hardware()
     
     def connect(self):
         import zwoasi
         
         if zwoasi.zwolib is None:
-            zwoasi.init("ASI_linux_mac_SDK_V1.22/lib/mac/libASICamera2.dylib")
+            zwoasi.init(os.path.dirname(__file__) + "/ASI_linux_mac_SDK_V1.22/lib/mac/libASICamera2.dylib")
         
         S = self.settings
 
@@ -60,17 +78,17 @@ class ZWOCameraHW(HardwareComponent):
             
             def read_func(c=c):
                 value,auto = self.camera.get_control_value(c['ControlType'])
-                print("read", c['Name'], value,auto)
+                #print("read", c['Name'], value,auto)
                 return value
             def write_func(x, c=c):
-                print("write", c['Name'], x)
+                #print("write", c['Name'], x)
                 self.camera.set_control_value(c['ControlType'], x)
             lq.connect_to_hardware(
                 read_func = read_func,
                 write_func = write_func
                 )
             if c['IsAutoSupported']:
-                print(c['Name'], "auto supported")
+                #print(c['Name'], "auto supported")
                 lq_auto = S.get_lq(c['Name']+"_auto")
                 def read_func(c=c):
                     value,auto = self.camera.get_control_value(c['ControlType'])
