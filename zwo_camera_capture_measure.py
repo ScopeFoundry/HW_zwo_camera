@@ -15,7 +15,6 @@ class ZWOCameraCaptureMeasure(Measurement):
         
         self.settings.live_img.add_listener(self.on_toggle_live_img)
 
-        self.add_operation('clear_and_plot', self.clear_and_plot)
 
 
     def setup_figure(self):
@@ -55,6 +54,15 @@ class ZWOCameraCaptureMeasure(Measurement):
                 im = im.swapaxes(0,1)
             self.live_img_item.setImage(image=im, 
                                         autoLevels=False)
+            scale = 1
+            center_x = 50
+            center_y = 50
+            im_aspect = im.shape[1]/im.shape[0]
+            self.img_rect = pg.QtCore.QRectF(0 - center_x * scale / 100,
+                                0 - center_y * scale * im_aspect / 100,
+                                scale,
+                                scale * im_aspect)
+            self.live_img_item.setRect(self.img_rect)
 
             #print(cam.camera.get_dropped_frames())
                 # # get rectangle
@@ -82,3 +90,6 @@ class ZWOCameraCaptureMeasure(Measurement):
         self.live_img_item = pg.ImageItem()
         self.xy_plot.addItem(self.live_img_item)
         
+        self.xy_plot.addItem(pg.InfiniteLine(angle=0))
+        self.xy_plot.addItem(pg.InfiniteLine(angle=90))
+       
