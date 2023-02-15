@@ -1,7 +1,9 @@
 from ScopeFoundry.measurement import Measurement
 from qtpy import QtCore, QtWidgets
 import pyqtgraph as pg
-
+from ScopeFoundry import h5_io
+import os
+import imageio
 
 class ZWOCameraCaptureMeasure(Measurement):    
 
@@ -45,6 +47,18 @@ class ZWOCameraCaptureMeasure(Measurement):
             cam.camera.start_video_capture()
         else:
             cam.camera.stop_video_capture()
+    """
+    #just overrided the run functions here to start video capture and the interrupt function
+    #to stop capture. this should support non-thread blocking video capture through the run functions multi-threading        
+    
+    def run(self):
+        cam = self.app.hardware['zwo_camera']
+        cam.camera.start_video_capture()
+        
+    def interrupt(self):
+        cam = self.app.hardware['zwo_camera']
+        cam.camera.stop_video_capture()
+    """
         
     def _on_live_img_timer(self):
         if self.settings['live_img']:
@@ -86,10 +100,38 @@ class ZWOCameraCaptureMeasure(Measurement):
 
         self.xy_plot = self.graph_layout.addPlot(0,0)
         self.xy_plot.setAspectLocked(lock=True, ratio=1)
-        self.xy_plot.setLabels(left=('mcl y', 'm'), bottom=('mcl x', 'm'))
+        #self.xy_plot.setLabels(left=('mcl y', 'm'), bottom=('mcl x', 'm'))
         self.live_img_item = pg.ImageItem()
         self.xy_plot.addItem(self.live_img_item)
         
         self.xy_plot.addItem(pg.InfiniteLine(angle=0))
         self.xy_plot.addItem(pg.InfiniteLine(angle=90))
+        
+        
+        
+        
+    def snap_and_save(self):
+        print("snap_and_save")
+        cam = self.app.hardware['zwo_camera']
+        cam.camera.start_video_capture()
+
+        try:
+            print("creating h5")
+            self.h5_file = h5_io.h5_base_file(self.app, measurement=self)
+            self.h5_filename = self.h5_file.filename
+            self.h5_m = h5_io.h5_create_measurement_group(measurement=self, h5group=self.h5_file)
+            
+            print("capture frame")
+            new_img = cam.camera.capture_video_frame()            
+        
+            print("save jpg")
+            imageio.imsave(self.h5_filename +".jpg", new_img, quality=100)
+            print("save tif")
+            imageio.imsave(self.h5_filename +".tif", new_img)
+            print("save h5")
+            self.h5_m['img'] = new_img
+            
+
+        finally:
+            self.h5_file.close()
        
