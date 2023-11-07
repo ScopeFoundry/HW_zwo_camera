@@ -12,6 +12,7 @@ class ZWOCameraCaptureMeasure(Measurement):
     def setup(self):
         self.settings.New('live_img', dtype=bool)
         self.settings.New('rotate', dtype=bool)
+        self.settings.New('px_bin', dtype=int, initial=1, choices=(1,2,4,8,16,32))
         
         self.add_operation('clear_and_plot', self.clear_and_plot)
         
@@ -43,10 +44,12 @@ class ZWOCameraCaptureMeasure(Measurement):
         
     def on_toggle_live_img(self):
         cam = self.app.hardware['zwo_camera']
+        if not hasattr(cam, 'camera'):
+            return
         if self.settings['live_img']:
-            cam.camera.start_video_capture()
+            cam.start_video_capture()
         else:
-            cam.camera.stop_video_capture()
+            cam.stop_video_capture()
     """
     #just overrided the run functions here to start video capture and the interrupt function
     #to stop capture. this should support non-thread blocking video capture through the run functions multi-threading        
@@ -63,9 +66,14 @@ class ZWOCameraCaptureMeasure(Measurement):
     def _on_live_img_timer(self):
         if self.settings['live_img']:
             cam = self.app.hardware['zwo_camera']
-            im  = cam.camera.capture_video_frame()
+            im  = cam.capture_video_frame()
             if self.settings['rotate']:
                 im = im.swapaxes(0,1)
+            
+            if self.settings['px_bin'] >= 1:
+                stride = self.settings['px_bin']
+                im = im[::stride,::stride]
+            
             self.live_img_item.setImage(image=im, 
                                         autoLevels=False)
             scale = 1
