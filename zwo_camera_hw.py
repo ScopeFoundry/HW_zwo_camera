@@ -15,14 +15,22 @@ class ZWOCameraHW(HardwareComponent):
         S.New('live_update', dtype=bool, initial=True)
         S.New('live_update_period', dtype=int, unit='ms', initial=100)
         
+        # Create Logged Quantities for each supported camera control
         for c in self.possible_controls.values():
+            unit = c.get('unit',None)
+            dtype_str = c.get('dtype', None)
+            if dtype_str=='bool':
+                dtype=bool
+            else:
+                dtype=int
             S.New(c['Name'],
-                  dtype=int,
+                  dtype=dtype,
                   initial = c['DefaultValue'],
                   vmin = c['MinValue'],
                   vmax = c['MaxValue'],
                   description=c['Description'],
-                  ro = not c['IsWritable'])
+                  ro = not c['IsWritable'],
+                  unit=unit)
             if c['IsAutoSupported']:
                 S.New(c['Name']+"_auto", dtype=bool)
         
@@ -30,6 +38,8 @@ class ZWOCameraHW(HardwareComponent):
         self.live_update_timer.timeout.connect(self.on_live_update_timer)        
         self.live_update_timer.start(100)
         S.live_update_period.add_listener(self.on_new_live_update_period)
+        
+        self._video_capture_on = False
 
     def on_new_live_update_period(self):
         #print("asdf")
@@ -74,15 +84,20 @@ class ZWOCameraHW(HardwareComponent):
         
         
         self.controls = cam.get_controls()
+
         
         for c in self.controls.values():
-            
+            print(c)
+            if c['Name'] not in S.as_dict().keys():
+                print("Skipping control because it is not in LQs", c)
+                continue
             lq = S.get_lq(c['Name'])
             lq.change_readonly(not c['IsWritable'])
-            lq.change_min_max(
-                vmin = c['MinValue'],
-                vmax = c['MaxValue'])
-            
+            if lq.dtype != bool:
+                lq.change_min_max(
+                    vmin = c['MinValue'],
+                    vmax = c['MaxValue'])
+                
             def read_func(c=c):
                 value,auto = self.camera.get_control_value(c['ControlType'])
                 #print("read", c['Name'], value,auto)
@@ -107,19 +122,47 @@ class ZWOCameraHW(HardwareComponent):
                     write_func = write_func
                     )
                 
+        for pc in self.possible_controls.values():
+            if pc['Name'] not in self.controls.keys():
+                lq = S.get_lq(pc['Name'])
+                print(f"Possible Control {pc['Name']} not in current camera controls")
+                lq.change_readonly(True)
+            
     def disconnect(self):
         
         self.settings.disconnect_all_from_hardware()
         
+        self._video_capture_on = False
         if hasattr(self, 'camera'):
             self.camera.close()
+            import zwoasi
+            zwoasi.zwolib = None
     
     
     
     
     def set_img_type(self,imtype):
         type_id = self.img_types[imtype]
+        vc = self._video_capture_on
+        if vc:
+            self.stop_video_capture()
         self.camera.set_image_type(type_id)
+        if vc:
+            self.start_video_capture()
+        
+    def start_video_capture(self):
+        self._video_capture_on = True
+        self.camera.start_video_capture()
+        
+    def stop_video_capture(self):
+        self.camera.stop_video_capture()
+        self._video_capture_off = True
+    
+    def capture_video_frame(self):
+        if self._video_capture_on:
+            return self.camera.capture_video_frame()
+        else:
+            raise IOError("Need to Start video to capture frame")
     
     img_types = {
         'RAW8' : 0,
@@ -128,6 +171,11 @@ class ZWOCameraHW(HardwareComponent):
         'Y8' : 3,
         }    
 
+    # Possible Controls are control dictionaries that
+    # come from camera.get_controls()
+    # all controls are integer datatypes internally
+    # use dtype to override, for example for bools
+    # units can be added
     possible_controls = {
          'Gain': {'Name': 'Gain',
           'Description': 'Gain',
@@ -138,6 +186,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 0},
          'Exposure': {'Name': 'Exposure',
+          'unit': 'us',                      
           'Description': 'Exposure Time(us)',
           'MaxValue': 2000000000,
           'MinValue': 32,
@@ -146,6 +195,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 1},
          'WB_R': {'Name': 'WB_R',
+          'unit': '%',                                   
           'Description': 'White balance: Red component',
           'MaxValue': 99,
           'MinValue': 1,
@@ -154,6 +204,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 3},
          'WB_B': {'Name': 'WB_B',
+          'unit': '%',                                   
           'Description': 'White balance: Blue component',
           'MaxValue': 99,
           'MinValue': 1,
@@ -170,6 +221,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 5},
          'BandWidth': {'Name': 'BandWidth',
+          'unit': '%',
           'Description': 'The total data transfer rate percentage',
           'MaxValue': 100,
           'MinValue': 40,
@@ -194,6 +246,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 10},
          'AutoExpMaxExpMS': {'Name': 'AutoExpMaxExpMS',
+          'unit': 'ms',                                              
           'Description': 'Auto exposure maximum exposure value(unit ms)',
           'MaxValue': 60000,
           'MinValue': 1,
@@ -210,6 +263,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 12},
          'HardwareBin': {'Name': 'HardwareBin',
+          'dtype': 'bool',
           'Description': 'Is hardware bin2:0->No 1->Yes',
           'MaxValue': 1,
           'MinValue': 0,
@@ -218,6 +272,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 13},
          'MonoBin': {'Name': 'MonoBin',
+          'dtype': 'bool',                     
           'Description': 'bin R G G B to one pixel for color camera, color will loss',
           'MaxValue': 1,
           'MinValue': 0,
@@ -226,6 +281,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 18},
          'Temperature': {'Name': 'Temperature',
+          'unit': 'C',                                   
           'Description': 'Sensor temperature(degrees Celsius)',
           'MaxValue': 1000,
           'MinValue': -500,
@@ -234,6 +290,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': False,
           'ControlType': 8},
          'CoolPowerPerc': {'Name': 'CoolPowerPerc',
+          'unit': '%',                 
           'Description': 'Cooler power percent',
           'MaxValue': 100,
           'MinValue': 0,
@@ -242,6 +299,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': False,
           'ControlType': 15},
          'TargetTemp': {'Name': 'TargetTemp',
+          'unit': 'C',          
           'Description': 'Target temperature(cool camera only)',
           'MaxValue': 30,
           'MinValue': -40,
@@ -250,6 +308,7 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 16},
          'CoolerOn': {'Name': 'CoolerOn',
+          'dtype': 'bool',              
           'Description': 'turn on/off cooler(cool camera only)',
           'MaxValue': 1,
           'MinValue': 0,
@@ -258,10 +317,30 @@ class ZWOCameraHW(HardwareComponent):
           'IsWritable': True,
           'ControlType': 17},
          'AntiDewHeater': {'Name': 'AntiDewHeater',
+          'dtype': 'bool',                            
           'Description': 'turn on/off anti dew heater(cool camera only)',
           'MaxValue': 1,
           'MinValue': 0,
           'DefaultValue': 0,
           'IsAutoSupported': False,
           'IsWritable': True,
-          'ControlType': 21}}
+          'ControlType': 21},
+         'HighSpeedMode':{ 'Name': 'HighSpeedMode',
+           'dtype': 'bool', 
+           'Description': 'Is high speed mode:0->No 1->Yes',
+           'MaxValue': 1,
+           'MinValue': 0,
+           'DefaultValue': 0,
+           'IsAutoSupported': False,
+           'IsWritable': True,
+           'ControlType': 14},
+         'GPS':{'Name': 'GPS', 
+           'dtype': 'bool',                 
+           'Description': 'the camera has a GPS or not',
+           'MaxValue': 1, 
+           'MinValue': 0,
+           'DefaultValue': 0,
+           'IsAutoSupported': False,
+           'IsWritable': False,
+           'ControlType': 22}
+         }
