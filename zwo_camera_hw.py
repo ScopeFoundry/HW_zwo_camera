@@ -43,10 +43,17 @@ class ZWOCameraHW(HardwareComponent):
     
     def connect(self):
         import zwoasi
-        
-        if zwoasi.zwolib is None:
+        from sys import platform
+        if platform == "linux" or platform == "linux2":
+            # linux
+            zwoasi.init(os.path.dirname(__file__) + "/ASI_linux_mac_SDK_V1.22/lib/x64/libASICamera2.so")
+        elif platform == "darwin":
+            # OS X
             zwoasi.init(os.path.dirname(__file__) + "/ASI_linux_mac_SDK_V1.22/lib/mac/libASICamera2.dylib")
-        
+        elif platform == "win32":
+            # Windows
+            zwoasi.init(os.path.dirname(__file__) + r"\ASI_Windows_SDK_V1.28\ASI SDK\lib\x64\ASICamera2.dll")
+            #zwoasi.init(r"C:\Users\lab\Documents\foundry_scope\ScopeFoundryHW\zwo_camera\ASI_Windows_SDK_V1.28\ASI SDK\lib\x64\ASICamera2.dll")
         S = self.settings
 
 
