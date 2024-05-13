@@ -4,6 +4,7 @@ import pyqtgraph as pg
 from ScopeFoundry import h5_io
 import os
 import imageio
+import numpy as np
 
 class ZWOCameraCaptureMeasure(Measurement):    
 
@@ -15,10 +16,10 @@ class ZWOCameraCaptureMeasure(Measurement):
         self.settings.New('px_bin', dtype=int, initial=1, choices=(1,2,4,8,16,32))
         
         self.add_operation('clear_and_plot', self.clear_and_plot)
-        
+        self.add_operation('snap_and_save', self.snap_and_save)
         self.settings.live_img.add_listener(self.on_toggle_live_img)
 
-
+        
 
     def setup_figure(self):
         
@@ -30,6 +31,12 @@ class ZWOCameraCaptureMeasure(Measurement):
         self.ui_layout.addWidget(self.ui_settings, 0,0)
         self.ui_cam_settings= self.app.hardware['zwo_camera'].settings.New_UI()
         self.ui_layout.addWidget(self.ui_cam_settings,1,0)
+        
+        snap_button = QtWidgets.QPushButton("Snap")
+        self.ui_layout.addWidget(snap_button)
+        snap_button.clicked.connect(self.snap_and_save)
+        
+        
     
         self.graph_layout = pg.GraphicsLayoutWidget()
         self.graph_layout.clear()
@@ -127,6 +134,7 @@ class ZWOCameraCaptureMeasure(Measurement):
             print("creating h5")
             self.h5_file = h5_io.h5_base_file(self.app, measurement=self)
             self.h5_filename = self.h5_file.filename
+            print(self.h5_filename)
             self.h5_m = h5_io.h5_create_measurement_group(measurement=self, h5group=self.h5_file)
             
             print("capture frame")
