@@ -81,6 +81,15 @@ class ZWOCameraCaptureMeasure(Measurement):
                 stride = self.settings['px_bin']
                 im = im[::stride,::stride]
             
+            # TODO this is a fix for certain cameras returning BGR instead of RGB
+            if True: 
+                if im.shape[-1] == 3:
+                    im_r  = im[:,:,2]
+                    im_g  = im[:,:,1]
+                    im_b  = im[:,:,0]
+                    im = np.stack([im_r,im_g, im_b], axis=2)
+                    
+            
             self.live_img_item.setImage(image=im, 
                                         autoLevels=False)
             scale = 1
